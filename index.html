@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Labo Expo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="app">
+  <div id="topBar">
+    <div id="warning">⚠️ Avant toute exposition : mettez la luminosité de l’écran au minimum.</div>
+    <div id="status">Statut : prêt</div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <div id="controls" class="panel">
+    <!-- Header sticky : Import toujours accessible -->
+    <div class="panelHeader">
+      <input type="file" id="fileInput" accept="image/*">
+      <button id="toggleControlsBtn" type="button">Masquer</button>
+      <button id="fullscreenBtn" type="button">Plein écran</button>
+    </div>
+
+    <div class="panelBody">
+      <div class="row">
+        <button id="mirrorBtn" type="button">Miroir</button>
+        <button id="rotLeftBtn" type="button">⟲ 90°</button>
+        <button id="rotRightBtn" type="button">↻ 90°</button>
+        <button id="rotResetBtn" type="button">Reset</button>
+        <span class="pill">Rotation: <span id="rotValue">0°</span></span>
+      </div>
+
+      <div class="row">
+        <label class="label">Courbe</label>
+        <select id="curvePreset">
+          <option value="neutral" selected>Neutre</option>
+          <option value="soft">Soft</option>
+          <option value="softer">Softer</option>
+          <option value="liftShadows">Lift shadows</option>
+          <option value="compressHighlights">Compress highlights</option>
+          <option value="flat">Flat</option>
+        </select>
+        <span class="hint">Appliquée à intégral + bandes + export.</span>
+      </div>
+
+      <div class="row">
+        <label class="label">Mode</label>
+        <select id="modeSelect">
+          <option value="full" selected>Exposition intégrale</option>
+          <option value="test">Bandes test (autour de Tref)</option>
+        </select>
+
+        <label class="label">Noir avant/après (s)</label>
+        <input id="delayTime" type="number" min="0" step="0.1" value="3">
+      </div>
+
+      <div class="row">
+        <label class="label">Expo intégrale (s)</label>
+        <input id="expoTime" type="number" min="0.1" step="0.1" value="12">
+      </div>
+
+      <!-- Paramètres bandes test : Tref + Δ + n -->
+      <div class="dialGrid">
+        <div class="dial">
+          <div class="dialTitle">Tref (s)</div>
+          <input id="refTime" type="number" min="0.1" step="0.1" value="12">
+          <div class="dialHint">temps central</div>
+        </div>
+
+        <div class="dial">
+          <div class="dialTitle">Δ (s)</div>
+          <input id="stepTime" type="number" min="0.1" step="0.1" value="1">
+          <div class="dialHint">écart entre bandes</div>
+        </div>
+
+        <div class="dial">
+          <div class="dialTitle">Bandes</div>
+          <input id="bandCount" type="number" min="2" max="20" step="1" value="7">
+          <div class="dialHint">2–20</div>
+        </div>
+
+        <div class="dial">
+          <div class="dialTitle">Orientation</div>
+          <select id="stripOrientation">
+            <option value="vertical" selected>Vertical</option>
+            <option value="horizontal">Horizontal</option>
+          </select>
+          <div class="dialHint">masque</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="exposeBtn" type="button">Exposer</button>
+        <button id="exportBtn" type="button">Exporter PNG HR</button>
+      </div>
+
+      <div class="row small">
+        <span class="hint">Tap sur l’image : masque/affiche le panneau (hors exposition).</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script defer src="app.js"></script>
+</body>
+</html>
