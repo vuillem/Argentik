@@ -1,6 +1,123 @@
 # Argentik
 
 Argentik  
+Experimental web application for darkroom contact printing from a smartphone
+
+---
+
+### Overview
+
+Argentik is a web application that turns a smartphone or tablet into a controlled light source for producing silver gelatin contact prints.
+
+The user displays a digital negative on the phone’s screen and places photographic paper directly on top of the device. The screen then acts as the exposure light source. The application allows precise control of exposure times and reproduces the basic workflow used in a traditional darkroom.
+
+The project was developed in a pedagogical context for teaching analog photography. Its goal is to provide a simple and accessible tool for exploring the relationship between digital images and chemical printing without requiring a traditional enlarger.
+
+---
+
+### Workflow: test strips before final exposure
+
+As in a traditional enlarger workflow, Argentik is designed to begin with test strips.
+
+Test strips allow the user to determine the correct exposure time before making a full print. This step is essential in darkroom printing because the way photographic paper reacts to light depends on several factors, including the density of the negative, the contrast of the image, and the type of paper.
+
+In Argentik, the test strip mode:
+
+- divides the image into several bands  
+- exposes each band with a different exposure time  
+- displays the exposure time on each band  
+
+The parameters that can be adjusted are:
+
+- reference exposure time  
+- time increment between each band  
+- number of bands
+
+This makes it possible to generate a full exposure scale on a single test print.
+
+Once the test strip has been developed and evaluated, the user can determine the optimal exposure time and then proceed to a full image exposure.
+
+---
+
+### Full image exposure
+
+After identifying the correct exposure time, the user can launch a full exposure of the image.
+
+The exposure sequence is designed for darkroom use:
+
+1. a black screen delay occurs before the exposure to allow the user to position the paper  
+2. the digital negative appears for the programmed exposure time  
+3. a double audio signal indicates that the exposure is finished  
+4. the screen returns to black  
+
+This sequence allows the user to work in darkness without needing to look at the screen during exposure.
+
+---
+
+### Contrast presets
+
+Argentik includes several contrast presets that adjust the tonal curve of the digital negative before exposure.
+
+These presets help adapt the image to different types of photographic paper or to negatives with varying contrast levels.
+
+The goal is to make it easier for users to reach a satisfactory result during the first test strips.
+
+---
+
+### Exposure time labels
+
+In test strip mode, exposure times are displayed directly on each band.
+
+The text is automatically mirrored so that it appears correctly readable on the final photographic print after exposure. The label boxes are designed to remain inside each band and avoid overlapping with the image area.
+
+---
+
+### Image manipulation tools
+
+Several tools allow the user to adapt the image for contact printing:
+
+- image rotation  
+- horizontal mirror  
+- framing adjustments  
+- full-screen display  
+
+These functions make it possible to adapt the orientation of the image to the physical position of the smartphone during printing.
+
+---
+
+### Current limitation
+
+In the current version of Argentik, the smartphone’s system status bar (time, battery level, notifications) is not automatically hidden.
+
+This area may emit unwanted light during exposure.
+
+A simple solution is to cover this part of the screen with opaque tape, such as black gaffer tape.
+
+---
+
+### Project goals
+
+Argentik aims to:
+
+- provide a pedagogical tool for analog photography  
+- explore hybrid workflows between digital images and chemical printing  
+- enable contact printing without a traditional enlarger  
+- experiment with simple and reproducible darkroom techniques
+
+---
+
+### Project status
+
+Argentik is currently in a testing phase with users. Feedback is used to improve:
+
+- interface ergonomics  
+- exposure timing accuracy  
+- the test strip mode  
+- compatibility with different smartphones
+
+Suggestions, feedback and contributions are welcome.
+
+Argentik  
 Application web expérimentale pour tirage argentique depuis smartphone
 
 ---
