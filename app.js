@@ -1,4 +1,3 @@
-alert("JS OK");
 function $(id) { return document.getElementById(id); }
 
 // --- UI / DOM ---
