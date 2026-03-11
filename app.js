@@ -286,7 +286,7 @@ function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, la
   blackScreen();
   if (!processed.ready) return;
 
-  // Image déjà transformée (rotation + miroir + négatif)
+  // Image déjà transformée
   ctx.drawImage(processed.off, processed.x, processed.y, processed.w, processed.h);
 
   // Bande active
@@ -317,15 +317,10 @@ function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, la
     }
   }
 
-  // --- LABEL exposé dans la bande ---
-  // cartouche noir écran => blanc papier
-  // texte blanc écran => noir papier
-
+  // ----- LABEL -----
   const pad = Math.max(6, Math.floor(Math.min(band.w, band.h) * 0.08));
 
-  // Format court recommandé :
-  // 12.0s -> 12s
-  // 12.5s -> 12.5s
+  // Format court recommandé
   let text = String(labelText).replace(/\.0s$/, "s");
 
   let fontPx = Math.max(18, Math.min(56, Math.floor(Math.min(band.w, band.h) * 0.22)));
@@ -337,15 +332,12 @@ function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, la
 
   let metrics = ctx.measureText(text);
   let boxW = Math.ceil(metrics.width + pad * 2);
-
-  // largeur max autorisée dans la bande
   const maxW = Math.max(20, band.w - pad * 2);
 
-  // Si le cartouche dépasse, on réduit la police
+  // Réduction si le cartouche dépasse
   if (boxW > maxW) {
     const scale = maxW / boxW;
     fontPx = Math.max(10, Math.floor(fontPx * scale));
-
     ctx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
     metrics = ctx.measureText(text);
     boxW = Math.ceil(metrics.width + pad * 2);
@@ -353,34 +345,43 @@ function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, la
 
   const boxH = Math.ceil(fontPx + pad * 1.4);
 
-  // Position du cartouche : coin haut-gauche de la bande
+  // Position du cartouche dans la bande
   let bx = band.x + pad;
   let by = band.y + pad;
 
-  // Sécurité : si malgré tout le cartouche dépasse, on le recale
-  if (bx + boxW > band.x + band.w - pad) {
+  if (bx + boxW > band.x + band.w - 2) {
     bx = Math.max(band.x + 2, band.x + band.w - boxW - 2);
   }
-  if (by + boxH > band.y + band.h - pad) {
+  if (by + boxH > band.y + band.h - 2) {
     by = Math.max(band.y + 2, band.y + band.h - boxH - 2);
   }
 
-  // Cartouche
+  // Cartouche noir écran => blanc papier
   ctx.fillStyle = "black";
   ctx.fillRect(bx, by, boxW, boxH);
 
-  // Texte
-  ctx.fillStyle = "white";
+  // Mini-canvas pour le texte
+  const labelCanvas = document.createElement("canvas");
+  labelCanvas.width = boxW;
+  labelCanvas.height = boxH;
+  const lctx = labelCanvas.getContext("2d");
 
+  lctx.clearRect(0, 0, boxW, boxH);
+  lctx.fillStyle = "white";
+  lctx.textBaseline = "top";
+  lctx.textAlign = "left";
+  lctx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+  lctx.fillText(text, pad, Math.floor(pad * 0.5));
+
+  // Dessin du texte dans le cartouche
   if (mirrored) {
-    // Miroir des glyphes autour du bord gauche du cartouche
     ctx.save();
-    ctx.translate(bx, 0);
+    ctx.translate(bx + boxW, by);
     ctx.scale(-1, 1);
-    ctx.fillText(text, -(bx + metrics.width + pad), by + Math.floor(pad * 0.5));
+    ctx.drawImage(labelCanvas, 0, 0);
     ctx.restore();
   } else {
-    ctx.fillText(text, bx + pad, by + Math.floor(pad * 0.5));
+    ctx.drawImage(labelCanvas, bx, by);
   }
 
   ctx.restore();
