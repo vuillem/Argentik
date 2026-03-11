@@ -431,10 +431,10 @@ async function runFullExposure(delayMs, expoMs) {
   await sleep(delayMs);
   drawProcessedFull();
   await sleep(expoMs);
+  signalEndExposure();
+  await sleep(200);
   blackScreen();
-  playBip();
   await sleep(delayMs);
-}
 
 async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCount, orientation) {
   const times = computeBandTimesSorted(tRefSec, deltaSec, bandCount);
@@ -455,8 +455,9 @@ async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCou
     await sleep(blinkMs);
   }
 
+  signalEndExposure();
+  await sleep(200);
   blackScreen();
-  playBip(0.22, 880, 0.08);
   await sleep(delayMs);
 
   return times;
@@ -592,3 +593,38 @@ if (fullscreenBtn) {
 }
 
 setStatus("prêt (charge une image)");
+
+function signalEndExposure() {
+
+  // vibration (Android principalement)
+  if (navigator.vibrate) {
+    navigator.vibrate([120, 60, 120]);
+  }
+
+  // double bip plus perceptible
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+
+  const audioCtx = new AudioCtx();
+
+  function beep(time) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.value = 880;
+
+    gain.gain.value = 0.12;
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start(time);
+    osc.stop(time + 0.15);
+  }
+
+  const t = audioCtx.currentTime;
+
+  beep(t);
+  beep(t + 0.25);
+}
