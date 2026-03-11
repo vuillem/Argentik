@@ -286,60 +286,98 @@ function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, la
   blackScreen();
   if (!processed.ready) return;
 
-  // Image déjà "baked" (rotation + miroir + courbe + négatif)
+  // Image déjà transformée (rotation + miroir + négatif)
   ctx.drawImage(processed.off, processed.x, processed.y, processed.w, processed.h);
+
+  // Bande active
+  const band = getBandRect(bandIndex, totalBands, orientation);
 
   // Masque tout sauf la bande
   ctx.fillStyle = "black";
-  const band = getBandRect(bandIndex, totalBands, orientation);
 
   if (orientation === "vertical") {
-    if (band.x > processed.x) ctx.fillRect(processed.x, processed.y, band.x - processed.x, processed.h);
+    if (band.x > processed.x) {
+      ctx.fillRect(processed.x, processed.y, band.x - processed.x, processed.h);
+    }
+
     const rightX = band.x + band.w;
     const rightW = (processed.x + processed.w) - rightX;
-    if (rightW > 0) ctx.fillRect(rightX, processed.y, rightW, processed.h);
+    if (rightW > 0) {
+      ctx.fillRect(rightX, processed.y, rightW, processed.h);
+    }
   } else {
-    if (band.y > processed.y) ctx.fillRect(processed.x, processed.y, processed.w, band.y - processed.y);
+    if (band.y > processed.y) {
+      ctx.fillRect(processed.x, processed.y, processed.w, band.y - processed.y);
+    }
+
     const bottomY = band.y + band.h;
     const bottomH = (processed.y + processed.h) - bottomY;
-    if (bottomH > 0) ctx.fillRect(processed.x, bottomY, processed.w, bottomH);
+    if (bottomH > 0) {
+      ctx.fillRect(processed.x, bottomY, processed.w, bottomH);
+    }
   }
 
-  // --- LABEL : cartouche noir (=> blanc sur papier) + texte blanc (=> noir sur papier)
+  // --- LABEL exposé dans la bande ---
+  // cartouche noir écran => blanc papier
+  // texte blanc écran => noir papier
+
   const pad = Math.max(6, Math.floor(Math.min(band.w, band.h) * 0.08));
-  const fontPx = Math.max(18, Math.min(56, Math.floor(Math.min(band.w, band.h) * 0.22)));
+
+  // Format court recommandé :
+  // 12.0s -> 12s
+  // 12.5s -> 12.5s
+  let text = String(labelText).replace(/\.0s$/, "s");
+
+  let fontPx = Math.max(18, Math.min(56, Math.floor(Math.min(band.w, band.h) * 0.22)));
 
   ctx.save();
   ctx.textBaseline = "top";
   ctx.textAlign = "left";
   ctx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
 
-  const text = String(labelText);
-  const metrics = ctx.measureText(text);
-  const boxW = Math.ceil(metrics.width + pad * 2);
+  let metrics = ctx.measureText(text);
+  let boxW = Math.ceil(metrics.width + pad * 2);
+
+  // largeur max autorisée dans la bande
+  const maxW = Math.max(20, band.w - pad * 2);
+
+  // Si le cartouche dépasse, on réduit la police
+  if (boxW > maxW) {
+    const scale = maxW / boxW;
+    fontPx = Math.max(10, Math.floor(fontPx * scale));
+
+    ctx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+    metrics = ctx.measureText(text);
+    boxW = Math.ceil(metrics.width + pad * 2);
+  }
+
   const boxH = Math.ceil(fontPx + pad * 1.4);
 
-  // Position : coin haut-gauche DE LA BANDE (pas ailleurs)
-  const bx = band.x + pad;
-  const by = band.y + pad;
+  // Position du cartouche : coin haut-gauche de la bande
+  let bx = band.x + pad;
+  let by = band.y + pad;
 
-  // Cartouche "non exposé" (noir écran)
+  // Sécurité : si malgré tout le cartouche dépasse, on le recale
+  if (bx + boxW > band.x + band.w - pad) {
+    bx = Math.max(band.x + 2, band.x + band.w - boxW - 2);
+  }
+  if (by + boxH > band.y + band.h - pad) {
+    by = Math.max(band.y + 2, band.y + band.h - boxH - 2);
+  }
+
+  // Cartouche
   ctx.fillStyle = "black";
   ctx.fillRect(bx, by, boxW, boxH);
 
-  // Texte "exposé" (blanc écran) : si image miroir, on miroir le texte DANS le cartouche
+  // Texte
   ctx.fillStyle = "white";
 
   if (mirrored) {
-    // miroir des glyphes autour de l’axe vertical au centre du cartouche
-    const x0 = bx + boxW / 2;
+    // Miroir des glyphes autour du bord gauche du cartouche
     ctx.save();
-    ctx.translate(2 * x0, 0);
+    ctx.translate(bx, 0);
     ctx.scale(-1, 1);
-
-    // pour que le texte se retrouve bien à gauche après miroir :
-    // on le dessine à l'abscisse symétrique (bx + boxW - pad)
-    ctx.fillText(text, bx + boxW - pad, by + Math.floor(pad * 0.5));
+    ctx.fillText(text, -(bx + metrics.width + pad), by + Math.floor(pad * 0.5));
     ctx.restore();
   } else {
     ctx.fillText(text, bx + pad, by + Math.floor(pad * 0.5));
