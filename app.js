@@ -470,6 +470,7 @@ async function runFullExposure(delayMs, expoMs) {
   await sleep(200);
   blackScreen();
   await sleep(delayMs);
+}
 
 async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCount, orientation) {
   const times = computeBandTimesSorted(tRefSec, deltaSec, bandCount);
