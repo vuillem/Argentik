@@ -141,6 +141,41 @@ function playBip(durationSec = 0.18, freq = 880, gainVal = 0.08) {
   osc.stop(audioCtx.currentTime + durationSec);
 }
 
+// SIGNAL FIN D'EXPO
+function signalEndExposure() {
+
+  // vibration (Android principalement)
+  if (navigator.vibrate) {
+    navigator.vibrate([120, 60, 120]);
+  }
+
+  // double bip plus perceptible
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+
+  const audioCtx = new AudioCtx();
+
+  function beep(time) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.value = 880;
+
+    gain.gain.value = 0.12;
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start(time);
+    osc.stop(time + 0.15);
+  }
+
+  const t = audioCtx.currentTime;
+
+  beep(t);
+  beep(t + 0.25);
+}
 // --- Courbe (LUT) ---
 function applyToneCurve(x01, gamma = 1.0, toe = 0.0, shoulder = 0.0) {
   let x = x01;
@@ -594,37 +629,3 @@ if (fullscreenBtn) {
 
 setStatus("prêt (charge une image)");
 
-function signalEndExposure() {
-
-  // vibration (Android principalement)
-  if (navigator.vibrate) {
-    navigator.vibrate([120, 60, 120]);
-  }
-
-  // double bip plus perceptible
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return;
-
-  const audioCtx = new AudioCtx();
-
-  function beep(time) {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-
-    osc.type = "sine";
-    osc.frequency.value = 880;
-
-    gain.gain.value = 0.12;
-
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    osc.start(time);
-    osc.stop(time + 0.15);
-  }
-
-  const t = audioCtx.currentTime;
-
-  beep(t);
-  beep(t + 0.25);
-}
