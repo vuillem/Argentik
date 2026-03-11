@@ -286,65 +286,64 @@ function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, la
   blackScreen();
   if (!processed.ready) return;
 
-  // 1️⃣ On clone l'image transformée (déjà miroir + rotation + négatif)
+  // Image déjà "baked" (rotation + miroir + courbe + négatif)
   ctx.drawImage(processed.off, processed.x, processed.y, processed.w, processed.h);
 
-  // 2️⃣ Calcul de la bande
+  // Masque tout sauf la bande
+  ctx.fillStyle = "black";
   const band = getBandRect(bandIndex, totalBands, orientation);
 
-  // 3️⃣ Masque tout sauf la bande
-  ctx.fillStyle = "black";
-
   if (orientation === "vertical") {
-    if (band.x > processed.x)
-      ctx.fillRect(processed.x, processed.y, band.x - processed.x, processed.h);
-
+    if (band.x > processed.x) ctx.fillRect(processed.x, processed.y, band.x - processed.x, processed.h);
     const rightX = band.x + band.w;
     const rightW = (processed.x + processed.w) - rightX;
-    if (rightW > 0)
-      ctx.fillRect(rightX, processed.y, rightW, processed.h);
-
+    if (rightW > 0) ctx.fillRect(rightX, processed.y, rightW, processed.h);
   } else {
-    if (band.y > processed.y)
-      ctx.fillRect(processed.x, processed.y, processed.w, band.y - processed.y);
-
+    if (band.y > processed.y) ctx.fillRect(processed.x, processed.y, processed.w, band.y - processed.y);
     const bottomY = band.y + band.h;
     const bottomH = (processed.y + processed.h) - bottomY;
-    if (bottomH > 0)
-      ctx.fillRect(processed.x, bottomY, processed.w, bottomH);
+    if (bottomH > 0) ctx.fillRect(processed.x, bottomY, processed.w, bottomH);
   }
 
-  // 4️⃣ LABEL exposé correctement (miroir + rotation respectés)
+  // --- LABEL : cartouche noir (=> blanc sur papier) + texte blanc (=> noir sur papier)
+  const pad = Math.max(6, Math.floor(Math.min(band.w, band.h) * 0.08));
+  const fontPx = Math.max(18, Math.min(56, Math.floor(Math.min(band.w, band.h) * 0.22)));
 
   ctx.save();
-
-  // On applique EXACTEMENT la même transformation que l'image
-  ctx.translate(processed.x + processed.w / 2, processed.y + processed.h / 2);
-  ctx.rotate(rotation * Math.PI / 180);
-  if (mirrored) ctx.scale(-1, 1);
-
-  const pad = Math.max(8, Math.floor(Math.min(processed.w, processed.h) * 0.04));
-  const fontPx = Math.max(28, Math.floor(Math.min(processed.w, processed.h) * 0.08));
-
   ctx.textBaseline = "top";
   ctx.textAlign = "left";
-  ctx.font = `700 ${fontPx}px -apple-system, system-ui, sans-serif`;
+  ctx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
 
   const text = String(labelText);
   const metrics = ctx.measureText(text);
-  const boxW = metrics.width + pad * 2;
-  const boxH = fontPx + pad * 1.2;
+  const boxW = Math.ceil(metrics.width + pad * 2);
+  const boxH = Math.ceil(fontPx + pad * 1.4);
 
-  const bx = -processed.w / 2 + pad;
-  const by = -processed.h / 2 + pad;
+  // Position : coin haut-gauche DE LA BANDE (pas ailleurs)
+  const bx = band.x + pad;
+  const by = band.y + pad;
 
-  // Cartouche non exposé
+  // Cartouche "non exposé" (noir écran)
   ctx.fillStyle = "black";
   ctx.fillRect(bx, by, boxW, boxH);
 
-  // Texte exposé
+  // Texte "exposé" (blanc écran) : si image miroir, on miroir le texte DANS le cartouche
   ctx.fillStyle = "white";
-  ctx.fillText(text, bx + pad, by + pad * 0.3);
+
+  if (mirrored) {
+    // miroir des glyphes autour de l’axe vertical au centre du cartouche
+    const x0 = bx + boxW / 2;
+    ctx.save();
+    ctx.translate(2 * x0, 0);
+    ctx.scale(-1, 1);
+
+    // pour que le texte se retrouve bien à gauche après miroir :
+    // on le dessine à l'abscisse symétrique (bx + boxW - pad)
+    ctx.fillText(text, bx + boxW - pad, by + Math.floor(pad * 0.5));
+    ctx.restore();
+  } else {
+    ctx.fillText(text, bx + pad, by + Math.floor(pad * 0.5));
+  }
 
   ctx.restore();
 }
