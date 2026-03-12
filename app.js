@@ -185,28 +185,191 @@ function applyToneCurve(x01, gamma = 1.0, toe = 0.0, shoulder = 0.0) {
   return Math.max(0, Math.min(1, x));
 }
 
-function buildCurveLUT(preset) {
-  const lut = new Uint8Array(256);
-  let gamma = 1.0, toe = 0.0, shoulder = 0.0;
+const CURVE_PRESETS = {
+  neutral: {
+    label: "Neutre",
+    type: "param",
+    gamma: 1.0,
+    toe: 0.0,
+    shoulder: 0.0
+  },
 
-  switch (preset) {
-    case "soft":               gamma = 0.80; toe = 0.18; shoulder = 0.18; break;
-    case "softer":             gamma = 0.70; toe = 0.26; shoulder = 0.26; break;
-    case "liftShadows":        gamma = 0.82; toe = 0.34; shoulder = 0.10; break;
-    case "compressHighlights": gamma = 0.88; toe = 0.10; shoulder = 0.34; break;
-    case "flat":               gamma = 0.62; toe = 0.34; shoulder = 0.34; break;
-    case "neutral":
-    default:                   gamma = 1.0;  toe = 0.0;  shoulder = 0.0;  break;
+  soft: {
+    label: "Doux",
+    type: "param",
+    gamma: 0.80,
+    toe: 0.18,
+    shoulder: 0.18
+  },
+
+  softer: {
+    label: "Très doux",
+    type: "param",
+    gamma: 0.70,
+    toe: 0.26,
+    shoulder: 0.26
+  },
+
+  liftShadows: {
+    label: "Ombres relevées",
+    type: "param",
+    gamma: 0.82,
+    toe: 0.34,
+    shoulder: 0.10
+  },
+
+  compressHighlights: {
+    label: "Hautes lumières compressées",
+    type: "param",
+    gamma: 0.88,
+    toe: 0.10,
+    shoulder: 0.34
+  },
+
+  flat: {
+    label: "Plat",
+    type: "param",
+    gamma: 0.62,
+    toe: 0.34,
+    shoulder: 0.34
+  },
+
+  // --- Nouveaux presets inspirés de ta courbe test Snapseed ---
+
+  nicolasTest01: {
+    label: "Test papier 01",
+    type: "points",
+    points: [
+      [0,   158],
+      [36,  112],
+      [84,   59],
+      [158,  26],
+      [235,   0],
+      [255,   0]
+    ]
+  },
+
+  nicolasTest02: {
+    label: "Test papier 02",
+    type: "points",
+    points: [
+      [0,   168],
+      [38,  122],
+      [90,   68],
+      [165,  30],
+      [242,   4],
+      [255,   0]
+    ]
+  },
+
+  nicolasContraste01: {
+    label: "Test papier contrasté",
+    type: "points",
+    points: [
+      [0,   145],
+      [28,   96],
+      [72,   44],
+      [145,  16],
+      [225,   0],
+      [255,   0]
+    ]
   }
+};
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function buildPointsLUT(points) {
+  const lut = new Uint8Array(256);
+
+  const pts = points
+    .map(([x, y]) => [clamp255(Math.round(x)), clamp255(Math.round(y))])
+    .sort((a, b) => a[0] - b[0]);
+
+  if (pts.length === 0) {
+    for (let i = 0; i < 256; i++) lut[i] = i;
+    return lut;
+  }
+
+  // avant le premier point
+  for (let i = 0; i <= pts[0][0]; i++) {
+    lut[i] = pts[0][1];
+  }
+
+  // interpolation entre points
+  for (let p = 0; p < pts.length - 1; p++) {
+    const [x0, y0] = pts[p];
+    const [x1, y1] = pts[p + 1];
+
+    const span = Math.max(1, x1 - x0);
+    for (let x = x0; x <= x1; x++) {
+      const t = (x - x0) / span;
+      lut[x] = clamp255(Math.round(lerp(y0, y1, t)));
+    }
+  }
+
+  // après le dernier point
+  const last = pts[pts.length - 1];
+  for (let i = last[0]; i < 256; i++) {
+    lut[i] = last[1];
+  }
+
+  return lut;
+}
+
+function buildCurveLUT(presetName) {
+  const preset = CURVE_PRESETS[presetName] || CURVE_PRESETS.neutral;
+
+  if (preset.type === "points") {
+    return buildPointsLUT(preset.points);
+  }
+
+  const lut = new Uint8Array(256);
+  const gamma = preset.gamma ?? 1.0;
+  const toe = preset.toe ?? 0.0;
+  const shoulder = preset.shoulder ?? 0.0;
 
   for (let i = 0; i < 256; i++) {
     const y01 = applyToneCurve(i / 255, gamma, toe, shoulder);
     lut[i] = clamp255(Math.round(y01 * 255));
   }
+
   return lut;
 }
 
+function ensureCurvePresetOptions() {
+  const existingValues = new Set(
+    Array.from(curvePresetSelect.options).map(opt => opt.value)
+  );
+
+  for (const [value, preset] of Object.entries(CURVE_PRESETS)) {
+    if (!existingValues.has(value)) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = preset.label;
+      curvePresetSelect.appendChild(opt);
+    }
+  }
+
+  // sécurité : si la valeur actuelle n'existe pas, on remet "neutral"
+  if (!CURVE_PRESETS[curvePresetSelect.value]) {
+    curvePresetSelect.value = "neutral";
+  }
+}
+
+ensureCurvePresetOptions();
+
 let curveLUT = buildCurveLUT(curvePresetSelect.value);
+
+curvePresetSelect.addEventListener("change", () => {
+  curveLUT = buildCurveLUT(curvePresetSelect.value);
+  if (hasImage && img.complete && img.naturalWidth) {
+    buildProcessedImage();
+    drawProcessedFull();
+  }
+  setStatus(`courbe: ${curvePresetSelect.value}`);
+});
 
 curvePresetSelect.addEventListener("change", () => {
   curveLUT = buildCurveLUT(curvePresetSelect.value);
