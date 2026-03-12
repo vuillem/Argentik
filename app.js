@@ -188,38 +188,34 @@ function playBip(durationSec = 0.18, freq = 880, gainVal = 0.08) {
 
 // SIGNAL FIN D'EXPO
 function signalEndExposure() {
-
-  // vibration (Android principalement)
   if (navigator.vibrate) {
-    navigator.vibrate([120, 60, 120]);
+    navigator.vibrate([180, 80, 180]);
   }
 
-  // double bip plus perceptible
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return;
+  const ac = getAudioCtx();
+  if (!ac) return;
 
-  const audioCtx = new AudioCtx();
-
-  function beep(time) {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+  function beep(time, freq = 880, duration = 0.18, gainValue = 0.25) {
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
 
     osc.type = "sine";
-    osc.frequency.value = 880;
+    osc.frequency.value = freq;
 
-    gain.gain.value = 0.12;
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.exponentialRampToValueAtTime(gainValue, time + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
 
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(ac.destination);
 
     osc.start(time);
-    osc.stop(time + 0.15);
+    osc.stop(time + duration);
   }
 
-  const t = audioCtx.currentTime;
-
-  beep(t);
-  beep(t + 0.25);
+  const t = ac.currentTime + 0.02;
+  beep(t, 880, 0.20, 0.25);
+  beep(t + 0.30, 1320, 0.22, 0.25);
 }
 
 ensureCurvePresetOptions(curvePresetSelect);
@@ -530,6 +526,10 @@ exposeBtn.addEventListener("click", async () => {
   enterExposureMode();
   await acquireWakeLock();
 
+  const ac = getAudioCtx();
+  if (ac && ac.state === "suspended") {
+  await ac.resume();
+}
   try {
     if (modeSelect.value === "full") {
       const expoSeconds = parseFloat(expoInput.value);
