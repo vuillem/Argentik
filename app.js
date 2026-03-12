@@ -542,7 +542,7 @@ exposeBtn.addEventListener("click", async () => {
       const list = times.map(t => t.toFixed(1)).join(" / ");
       setStatus(`fin bandes test — temps: ${list} (s)`);
     }
-  finally {
+  }finally {
   await releaseWakeLock();
   isExposing = false;
 }
