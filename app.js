@@ -79,6 +79,35 @@ let img = new Image();
 let hasImage = false;
 let isExposing = false;
 
+// --- Wake Lock ---
+let wakeLockSentinel = null;
+
+async function acquireWakeLock() {
+  try {
+    if (!("wakeLock" in navigator)) return;
+    wakeLockSentinel = await navigator.wakeLock.request("screen");
+  } catch (err) {
+    console.warn("WakeLock error:", err);
+  }
+}
+
+async function releaseWakeLock() {
+  try {
+    if (wakeLockSentinel) {
+      await wakeLockSentinel.release();
+      wakeLockSentinel = null;
+    }
+  } catch (err) {
+    console.warn("WakeLock release error:", err);
+  }
+}
+
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && isExposing) {
+    await acquireWakeLock();
+  }
+});
+
 let rotation = 0;     // 0, 90, 180, 270
 let mirrored = true;  // ON par défaut
 
@@ -486,6 +515,7 @@ exposeBtn.addEventListener("click", async () => {
 
   isExposing = true;
   enterExposureMode();
+  await acquireWakeLock();
 
   try {
     if (modeSelect.value === "full") {
@@ -512,9 +542,10 @@ exposeBtn.addEventListener("click", async () => {
       const list = times.map(t => t.toFixed(1)).join(" / ");
       setStatus(`fin bandes test — temps: ${list} (s)`);
     }
-  } finally {
-    isExposing = false;
-  }
+  finally {
+  await releaseWakeLock();
+  isExposing = false;
+}
 });
 
 // --- Export PNG haute résolution ---
