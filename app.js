@@ -36,6 +36,9 @@ const rotValue = $("rotValue");
 // Topbar (pour tout cacher pendant expo)
 const topBar = document.getElementById("topBar");
 
+// Implémentation des nouveaux lut
+import { buildCurveLUT, ensureCurvePresetOptions } from "./lut.js";
+
 // --- Diagnostics ---
 function setStatus(msg) {
   if (statusEl) statusEl.textContent = `Statut : ${msg}`;
@@ -176,105 +179,9 @@ function signalEndExposure() {
   beep(t);
   beep(t + 0.25);
 }
-// --- Courbe (LUT) ---
-function applyToneCurve(x01, gamma = 1.0, toe = 0.0, shoulder = 0.0) {
-  let x = x01;
-  if (toe > 0) x = x + toe * (x * (1 - x));
-  x = Math.pow(Math.max(0, x), gamma);
-  if (shoulder > 0) x = x - shoulder * (x * (1 - x));
-  return Math.max(0, Math.min(1, x));
-}
 
-const CURVE_PRESETS = {
-  neutral: {
-    label: "Neutre",
-    type: "param",
-    gamma: 1.0,
-    toe: 0.0,
-    shoulder: 0.0
-  },
-
-  soft: {
-    label: "Doux",
-    type: "param",
-    gamma: 0.80,
-    toe: 0.18,
-    shoulder: 0.18
-  },
-
-  softer: {
-    label: "Très doux",
-    type: "param",
-    gamma: 0.70,
-    toe: 0.26,
-    shoulder: 0.26
-  },
-
-  liftShadows: {
-    label: "Ombres relevées",
-    type: "param",
-    gamma: 0.82,
-    toe: 0.34,
-    shoulder: 0.10
-  },
-
-  compressHighlights: {
-    label: "Hautes lumières compressées",
-    type: "param",
-    gamma: 0.88,
-    toe: 0.10,
-    shoulder: 0.34
-  },
-
-  flat: {
-    label: "Plat",
-    type: "param",
-    gamma: 0.62,
-    toe: 0.34,
-    shoulder: 0.34
-  },
-
-  // --- Nouveaux presets inspirés de ta courbe test Snapseed ---
-
-  nicolasTest01: {
-    label: "Test papier 01",
-    type: "points",
-    points: [
-      [0,   158],
-      [36,  112],
-      [84,   59],
-      [158,  26],
-      [235,   0],
-      [255,   0]
-    ]
-  },
-
-  nicolasTest02: {
-    label: "Test papier 02",
-    type: "points",
-    points: [
-      [0,   168],
-      [38,  122],
-      [90,   68],
-      [165,  30],
-      [242,   4],
-      [255,   0]
-    ]
-  },
-
-  nicolasContraste01: {
-    label: "Test papier contrasté",
-    type: "points",
-    points: [
-      [0,   145],
-      [28,   96],
-      [72,   44],
-      [145,  16],
-      [225,   0],
-      [255,   0]
-    ]
-  }
-};
+ensureCurvePresetOptions(curvePresetSelect);
+let curveLUT = buildCurveLUT(curvePresetSelect.value);
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -371,15 +278,6 @@ curvePresetSelect.addEventListener("change", () => {
   setStatus(`courbe: ${curvePresetSelect.value}`);
 });
 
-curvePresetSelect.addEventListener("change", () => {
-  curveLUT = buildCurveLUT(curvePresetSelect.value);
-  if (hasImage && img.complete && img.naturalWidth) {
-    buildProcessedImage();
-    drawProcessedFull();
-  }
-  setStatus(`courbe: ${curvePresetSelect.value}`);
-});
-
 // --- Rotation / miroir ---
 function normRot(d) { return ((d % 360) + 360) % 360; }
 function updateRotUI(){ rotValue.textContent = `${rotation}°`; }
@@ -449,8 +347,8 @@ function buildProcessedImage() {
     const r = data[i], g = data[i + 1], b = data[i + 2];
     let gray = 0.299 * r + 0.587 * g + 0.114 * b;
     gray = clamp255(Math.round(gray));
-    gray = curveLUT[gray];
     gray = 255 - gray;
+    gray = curveLUT[gray];
     data[i] = data[i + 1] = data[i + 2] = gray;
   }
 
@@ -743,8 +641,8 @@ exportBtn.addEventListener("click", () => {
       const r = data[i], g = data[i + 1], b = data[i + 2];
       let gray = 0.299 * r + 0.587 * g + 0.114 * b;
       gray = clamp255(Math.round(gray));
-      gray = curveLUT[gray];
       gray = 255 - gray;
+      gray = curveLUT[gray];
       data[i] = data[i + 1] = data[i + 2] = gray;
     }
     octx.putImageData(imageData, 0, 0);
