@@ -79,6 +79,14 @@ let img = new Image();
 let hasImage = false;
 let isExposing = false;
 
+let audioCtx = null;
+
+function getAudioCtx() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (!audioCtx) audioCtx = new AudioCtx();
+  return audioCtx;
+}
 // --- Wake Lock ---
 let wakeLockSentinel = null;
 
@@ -105,11 +113,16 @@ async function releaseWakeLock() {
 document.addEventListener("visibilitychange", async () => {
   if (document.visibilityState === "visible" && isExposing) {
     await acquireWakeLock();
+    
+    const ac = getAudioCtx();
+if (ac && ac.state === "suspended") {
+  await ac.resume();
+}
   }
 });
 
 let rotation = 0;     // 0, 90, 180, 270
-let mirrored = true;  // ON par défaut
+let mirrored = false;  // ON par défaut
 
 // Offscreen (image prête)
 let processed = {
@@ -406,10 +419,10 @@ function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, la
   const lctx = labelCanvas.getContext("2d");
 
   lctx.clearRect(0, 0, boxW, boxH);
-  lctx.fillStyle = "white";
+  lctx.fillStyle = "rgb(180,180,180)";
   lctx.textBaseline = "top";
   lctx.textAlign = "left";
-  lctx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+  lctx.font = `600 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
   lctx.fillText(text, pad, Math.floor(pad * 0.5));
 
   // Dessin du texte dans le cartouche
