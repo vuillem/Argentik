@@ -85,7 +85,7 @@ export const CURVE_PRESETS = {
     [224, 165],
     [255, 182],
       ]
-}
+},
 
   paperCurveSoft: {
     label: "Courbe papier douce",
