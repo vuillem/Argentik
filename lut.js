@@ -74,14 +74,18 @@ export const CURVE_PRESETS = {
   paperCurve01: {
   label: "Courbe papier 01",
   type: "points",
-  points: [
-    [0, 60],
-    [64, 100],
+    points: [
+    [0, 48],
+    [32, 72],
+    [64, 96],
+    [96, 116],
     [128, 128],
-    [192, 156],
-    [255, 195]
-  ]
-},
+    [160, 138],
+    [192, 150],
+    [224, 165],
+    [255, 182],
+      ]
+}
 
   paperCurveSoft: {
     label: "Courbe papier douce",
