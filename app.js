@@ -602,10 +602,27 @@ async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCou
 }
 
 async function beginExposureSession() {
+
+  // 🔴 1. Supprimer le focus actif (input, select, etc.)
+  if (document.activeElement) {
+    document.activeElement.blur();
+  }
+
+  // 🔴 2. Laisser iOS stabiliser le viewport après blur
+  await new Promise(r => setTimeout(r, 150));
+
+  // 🔴 3. Ensuite seulement on prépare l’exposition
   prepareExposureFrame();
+
   isExposing = true;
   enterExposureMode();
   await acquireWakeLock();
+
+  const ac = getAudioCtx();
+  if (ac && ac.state === "suspended") {
+    await ac.resume();
+  }
+}
 
   const ac = getAudioCtx();
   if (ac && ac.state === "suspended") {
