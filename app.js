@@ -2,7 +2,7 @@ function $(id) { return document.getElementById(id); }
 
 // --- UI / DOM ---
 const canvas = $("canvas");
-const ctx = canvas.getContext("2d");
+const ctx = canvas.getContext("2d", { alpha: false });
 
 const controls = $("controls");
 const toggleControlsBtn = $("toggleControlsBtn");
@@ -36,7 +36,6 @@ const rotValue = $("rotValue");
 // Topbar (pour tout cacher pendant expo)
 const topBar = document.getElementById("topBar");
 
-// Implémentation des nouveaux lut
 import { buildCurveLUT, ensureCurvePresetOptions } from "./lut.js";
 
 // --- Diagnostics ---
@@ -46,7 +45,6 @@ function setStatus(msg) {
 window.addEventListener("error", (e) => setStatus(`ERREUR JS: ${e.message}`));
 window.addEventListener("unhandledrejection", (e) => setStatus(`PROMISE REJETÉE: ${String(e.reason)}`));
 
-// Vérification IDs
 const required = [
   ["canvas", canvas],
   ["controls", controls],
@@ -80,6 +78,42 @@ let hasImage = false;
 let isExposing = false;
 
 let audioCtx = null;
+let wakeLockSentinel = null;
+
+let rotation = 0;      // 0, 90, 180, 270
+let mirrored = false;  // false par défaut
+
+let layoutRaf = 0;
+let resizeResumeTimer = 0;
+
+const processed = {
+  ready: false,
+  off: document.createElement("canvas"),
+  offCtx: null,
+  x: 0,
+  y: 0,
+  w: 0,
+  h: 0,
+  viewportW: 0,
+  viewportH: 0,
+};
+processed.offCtx = processed.off.getContext("2d", { willReadFrequently: true });
+
+const exposureState = {
+  locked: false,
+  viewportW: 0,
+  viewportH: 0,
+  frame: document.createElement("canvas"),
+  frameCtx: null,
+  preparedAt: 0,
+  suppressResizeUntil: 0,
+};
+exposureState.frameCtx = exposureState.frame.getContext("2d", { alpha: false });
+
+// --- Utils ---
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function clamp255(v) { return Math.max(0, Math.min(255, v)); }
+function clearTimer(id) { if (id) window.clearTimeout(id); }
 
 function getAudioCtx() {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -87,8 +121,6 @@ function getAudioCtx() {
   if (!audioCtx) audioCtx = new AudioCtx();
   return audioCtx;
 }
-// --- Wake Lock ---
-let wakeLockSentinel = null;
 
 async function acquireWakeLock() {
   try {
@@ -113,84 +145,111 @@ async function releaseWakeLock() {
 document.addEventListener("visibilitychange", async () => {
   if (document.visibilityState === "visible" && isExposing) {
     await acquireWakeLock();
-    
     const ac = getAudioCtx();
-if (ac && ac.state === "suspended") {
-  await ac.resume();
-}
+    if (ac && ac.state === "suspended") {
+      await ac.resume();
+    }
   }
 });
 
-let rotation = 0;     // 0, 90, 180, 270
-let mirrored = false;  // ON par défaut
-
-// Offscreen (image prête)
-let processed = {
-  ready: false,
-  off: document.createElement("canvas"),
-  offCtx: null,
-  x: 0, y: 0, w: 0, h: 0
-};
-processed.offCtx = processed.off.getContext("2d", { willReadFrequently: true });
-
-// --- Utils ---
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function clamp255(v) { return Math.max(0, Math.min(255, v)); }
-
-function blackScreen() {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = "black";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+function blackScreen(targetCtx = ctx, width = canvas.width, height = canvas.height) {
+  targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+  targetCtx.fillStyle = "black";
+  targetCtx.fillRect(0, 0, width, height);
 }
 
-// Cacher TOUT pendant expo (menu + topbar + statut)
+function getViewportSize() {
+  const vv = window.visualViewport;
+  return {
+    width: Math.max(1, Math.round(vv ? vv.width : window.innerWidth)),
+    height: Math.max(1, Math.round(vv ? vv.height : window.innerHeight)),
+  };
+}
+
 function enterExposureMode() {
   controls.classList.add("hidden");
   if (topBar) topBar.style.display = "none";
   if (statusEl) statusEl.textContent = "";
 }
+
 function exitExposureMode() {
   if (topBar) topBar.style.display = "";
   controls.classList.remove("hidden");
 }
 
-// iOS Safari sizing : visualViewport si dispo
-function resizeCanvas() {
-  const vv = window.visualViewport;
-  canvas.width = vv ? Math.round(vv.width) : window.innerWidth;
-  canvas.height = vv ? Math.round(vv.height) : window.innerHeight;
+function lockCanvasViewport(width, height) {
+  exposureState.locked = true;
+  exposureState.viewportW = width;
+  exposureState.viewportH = height;
+  exposureState.preparedAt = Date.now();
+  exposureState.suppressResizeUntil = Date.now() + 1500;
+
+  canvas.width = width;
+  canvas.height = height;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+}
+
+function unlockCanvasViewport() {
+  exposureState.locked = false;
+  exposureState.viewportW = 0;
+  exposureState.viewportH = 0;
+  exposureState.preparedAt = 0;
+  exposureState.suppressResizeUntil = 0;
+  canvas.style.width = "";
+  canvas.style.height = "";
+}
+
+function resizeCanvas(force = false) {
+  if (exposureState.locked && !force) {
+    return;
+  }
+
+  const { width, height } = getViewportSize();
+  canvas.width = width;
+  canvas.height = height;
 
   blackScreen();
   if (hasImage && img.complete && img.naturalWidth) {
-    buildProcessedImage();
+    buildProcessedImage(width, height);
     drawProcessedFull();
   }
 }
-window.addEventListener("resize", resizeCanvas);
-window.addEventListener("orientationchange", () => setTimeout(resizeCanvas, 250));
-if (window.visualViewport) window.visualViewport.addEventListener("resize", resizeCanvas);
-resizeCanvas();
 
-function playBip(durationSec = 0.18, freq = 880, gainVal = 0.08) {
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return;
-  const audioCtx = new AudioCtx();
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = "sine";
-  osc.frequency.value = freq;
-  gain.gain.value = gainVal;
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.start();
-  osc.stop(audioCtx.currentTime + durationSec);
+function scheduleResize(force = false) {
+  if (layoutRaf) cancelAnimationFrame(layoutRaf);
+  layoutRaf = requestAnimationFrame(() => {
+    layoutRaf = 0;
+    resizeCanvas(force);
+  });
 }
 
-// SIGNAL FIN D'EXPO
-function signalEndExposure() {
-  if (navigator.vibrate) {
-    navigator.vibrate([180, 80, 180]);
+function maybeHandleResize() {
+  if (exposureState.locked) {
+    return;
   }
+
+  clearTimer(resizeResumeTimer);
+  resizeResumeTimer = window.setTimeout(() => {
+    scheduleResize(false);
+  }, 80);
+}
+
+window.addEventListener("resize", maybeHandleResize, { passive: true });
+window.addEventListener("orientationchange", () => {
+  if (exposureState.locked) return;
+  clearTimer(resizeResumeTimer);
+  resizeResumeTimer = window.setTimeout(() => scheduleResize(false), 250);
+}, { passive: true });
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", maybeHandleResize, { passive: true });
+}
+
+resizeCanvas(true);
+
+function signalEndExposure() {
+  if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
 
   const ac = getAudioCtx();
   if (!ac) return;
@@ -223,8 +282,8 @@ let curveLUT = buildCurveLUT(curvePresetSelect.value);
 
 curvePresetSelect.addEventListener("change", () => {
   curveLUT = buildCurveLUT(curvePresetSelect.value);
-  if (hasImage && img.complete && img.naturalWidth) {
-    buildProcessedImage();
+  if (hasImage && img.complete && img.naturalWidth && !isExposing) {
+    buildProcessedImage(canvas.width, canvas.height);
     drawProcessedFull();
   }
   setStatus(`courbe: ${curvePresetSelect.value}`);
@@ -232,49 +291,67 @@ curvePresetSelect.addEventListener("change", () => {
 
 // --- Rotation / miroir ---
 function normRot(d) { return ((d % 360) + 360) % 360; }
-function updateRotUI(){ rotValue.textContent = `${rotation}°`; }
+function updateRotUI() { rotValue.textContent = `${rotation}°`; }
 
 mirrorBtn.addEventListener("click", () => {
   mirrored = !mirrored;
-  if (hasImage && img.complete && img.naturalWidth) { buildProcessedImage(); drawProcessedFull(); }
+  if (hasImage && img.complete && img.naturalWidth && !isExposing) {
+    buildProcessedImage(canvas.width, canvas.height);
+    drawProcessedFull();
+  }
   setStatus(mirrored ? "miroir: ON" : "miroir: OFF");
 });
 
 rotLeftBtn.addEventListener("click", () => {
   rotation = normRot(rotation - 90);
   updateRotUI();
-  if (hasImage && img.complete && img.naturalWidth) { buildProcessedImage(); drawProcessedFull(); }
+  if (hasImage && img.complete && img.naturalWidth && !isExposing) {
+    buildProcessedImage(canvas.width, canvas.height);
+    drawProcessedFull();
+  }
 });
 
 rotRightBtn.addEventListener("click", () => {
   rotation = normRot(rotation + 90);
   updateRotUI();
-  if (hasImage && img.complete && img.naturalWidth) { buildProcessedImage(); drawProcessedFull(); }
+  if (hasImage && img.complete && img.naturalWidth && !isExposing) {
+    buildProcessedImage(canvas.width, canvas.height);
+    drawProcessedFull();
+  }
 });
 
 rotResetBtn.addEventListener("click", () => {
   rotation = 0;
   updateRotUI();
-  if (hasImage && img.complete && img.naturalWidth) { buildProcessedImage(); drawProcessedFull(); }
+  if (hasImage && img.complete && img.naturalWidth && !isExposing) {
+    buildProcessedImage(canvas.width, canvas.height);
+    drawProcessedFull();
+  }
 });
 
 updateRotUI();
 
-// --- Build image prête (rotation+miroir + NB + courbe + inversion) ---
-function buildProcessedImage() {
+function buildProcessedImage(targetW = canvas.width, targetH = canvas.height) {
   processed.ready = false;
 
-  const rot90 = (rotation === 90 || rotation === 270);
-  const effW = rot90 ? img.height : img.width;
-  const effH = rot90 ? img.width  : img.height;
+  const rot90 = rotation === 90 || rotation === 270;
+  const sourceW = img.naturalWidth || img.width;
+  const sourceH = img.naturalHeight || img.height;
+  const effW = rot90 ? sourceH : sourceW;
+  const effH = rot90 ? sourceW : sourceH;
 
-  const scale = Math.min(canvas.width / effW, canvas.height / effH);
-  const w = Math.floor(effW * scale);
-  const h = Math.floor(effH * scale);
-  const x = Math.floor((canvas.width - w) / 2);
-  const y = Math.floor((canvas.height - h) / 2);
+  const scale = Math.min(targetW / effW, targetH / effH);
+  const w = Math.max(1, Math.floor(effW * scale));
+  const h = Math.max(1, Math.floor(effH * scale));
+  const x = Math.floor((targetW - w) / 2);
+  const y = Math.floor((targetH - h) / 2);
 
-  processed.x = x; processed.y = y; processed.w = w; processed.h = h;
+  processed.viewportW = targetW;
+  processed.viewportH = targetH;
+  processed.x = x;
+  processed.y = y;
+  processed.w = w;
+  processed.h = h;
   processed.off.width = w;
   processed.off.height = h;
 
@@ -287,7 +364,7 @@ function buildProcessedImage() {
 
   octx.save();
   octx.translate(w / 2, h / 2);
-  octx.rotate(rotation * Math.PI / 180);
+  octx.rotate((rotation * Math.PI) / 180);
   if (mirrored) octx.scale(-1, 1);
   octx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
   octx.restore();
@@ -296,7 +373,9 @@ function buildProcessedImage() {
   const data = imageData.data;
 
   for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
     let gray = 0.299 * r + 0.587 * g + 0.114 * b;
     gray = clamp255(Math.round(gray));
     gray = 255 - gray;
@@ -308,92 +387,77 @@ function buildProcessedImage() {
   processed.ready = true;
 }
 
-function drawProcessedFull() {
-  blackScreen();
+function drawProcessedFull(targetCtx = ctx) {
+  blackScreen(targetCtx, canvas.width, canvas.height);
   if (!processed.ready) return;
-  ctx.drawImage(processed.off, processed.x, processed.y, processed.w, processed.h);
+  targetCtx.drawImage(processed.off, processed.x, processed.y, processed.w, processed.h);
 }
 
-// --- Bandes : calcul des bornes d’une bande (dans l’espace canvas) ---
 function getBandRect(bandIndex, totalBands, orientation) {
   if (orientation === "vertical") {
     const bandW = processed.w / totalBands;
     const x0 = Math.floor(processed.x + bandW * bandIndex);
     const x1 = Math.floor(processed.x + bandW * (bandIndex + 1));
     return { x: x0, y: processed.y, w: Math.max(1, x1 - x0), h: processed.h };
-  } else {
-    const bandH = processed.h / totalBands;
-    const y0 = Math.floor(processed.y + bandH * bandIndex);
-    const y1 = Math.floor(processed.y + bandH * (bandIndex + 1));
-    return { x: processed.x, y: y0, w: processed.w, h: Math.max(1, y1 - y0) };
   }
+
+  const bandH = processed.h / totalBands;
+  const y0 = Math.floor(processed.y + bandH * bandIndex);
+  const y1 = Math.floor(processed.y + bandH * (bandIndex + 1));
+  return { x: processed.x, y: y0, w: processed.w, h: Math.max(1, y1 - y0) };
 }
 
-// --- Dessin 1 bande SEULEMENT + LABEL exposé (cartouche blanc sur papier) ---
-function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, labelText) {
-  blackScreen();
+function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, labelText, targetCtx = ctx) {
+  blackScreen(targetCtx, canvas.width, canvas.height);
   if (!processed.ready) return;
 
-  // Image déjà transformée
-  ctx.drawImage(processed.off, processed.x, processed.y, processed.w, processed.h);
+  targetCtx.drawImage(processed.off, processed.x, processed.y, processed.w, processed.h);
 
-  // Bande active
   const band = getBandRect(bandIndex, totalBands, orientation);
-
-  // Masque tout sauf la bande
-  ctx.fillStyle = "black";
+  targetCtx.fillStyle = "black";
 
   if (orientation === "vertical") {
     if (band.x > processed.x) {
-      ctx.fillRect(processed.x, processed.y, band.x - processed.x, processed.h);
+      targetCtx.fillRect(processed.x, processed.y, band.x - processed.x, processed.h);
     }
-
     const rightX = band.x + band.w;
     const rightW = (processed.x + processed.w) - rightX;
     if (rightW > 0) {
-      ctx.fillRect(rightX, processed.y, rightW, processed.h);
+      targetCtx.fillRect(rightX, processed.y, rightW, processed.h);
     }
   } else {
     if (band.y > processed.y) {
-      ctx.fillRect(processed.x, processed.y, processed.w, band.y - processed.y);
+      targetCtx.fillRect(processed.x, processed.y, processed.w, band.y - processed.y);
     }
-
     const bottomY = band.y + band.h;
     const bottomH = (processed.y + processed.h) - bottomY;
     if (bottomH > 0) {
-      ctx.fillRect(processed.x, bottomY, processed.w, bottomH);
+      targetCtx.fillRect(processed.x, bottomY, processed.w, bottomH);
     }
   }
 
-  // ----- LABEL -----
   const pad = Math.max(6, Math.floor(Math.min(band.w, band.h) * 0.08));
-
-  // Format court recommandé
   let text = String(labelText).replace(/\.0s$/, "s");
-
   let fontPx = Math.max(18, Math.min(56, Math.floor(Math.min(band.w, band.h) * 0.22)));
 
-  ctx.save();
-  ctx.textBaseline = "top";
-  ctx.textAlign = "left";
-  ctx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+  targetCtx.save();
+  targetCtx.textBaseline = "top";
+  targetCtx.textAlign = "left";
+  targetCtx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
 
-  let metrics = ctx.measureText(text);
+  let metrics = targetCtx.measureText(text);
   let boxW = Math.ceil(metrics.width + pad * 2);
   const maxW = Math.max(20, band.w - pad * 2);
 
-  // Réduction si le cartouche dépasse
   if (boxW > maxW) {
     const scale = maxW / boxW;
     fontPx = Math.max(10, Math.floor(fontPx * scale));
-    ctx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
-    metrics = ctx.measureText(text);
+    targetCtx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+    metrics = targetCtx.measureText(text);
     boxW = Math.ceil(metrics.width + pad * 2);
   }
 
   const boxH = Math.ceil(fontPx + pad * 1.4);
-
-  // Position du cartouche dans la bande
   let bx = band.x + pad;
   let by = band.y + pad;
 
@@ -404,11 +468,9 @@ function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, la
     by = Math.max(band.y + 2, band.y + band.h - boxH - 2);
   }
 
-  // Cartouche noir écran => blanc papier
-  ctx.fillStyle = "black";
-  ctx.fillRect(bx, by, boxW, boxH);
+  targetCtx.fillStyle = "black";
+  targetCtx.fillRect(bx, by, boxW, boxH);
 
-  // Mini-canvas pour le texte
   const labelCanvas = document.createElement("canvas");
   labelCanvas.width = boxW;
   labelCanvas.height = boxH;
@@ -421,19 +483,19 @@ function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, la
   lctx.font = `600 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
   lctx.fillText(text, pad, Math.floor(pad * 0.5));
 
-  // Dessin du texte dans le cartouche
   if (mirrored) {
-    ctx.save();
-    ctx.translate(bx + boxW, by);
-    ctx.scale(-1, 1);
-    ctx.drawImage(labelCanvas, 0, 0);
-    ctx.restore();
+    targetCtx.save();
+    targetCtx.translate(bx + boxW, by);
+    targetCtx.scale(-1, 1);
+    targetCtx.drawImage(labelCanvas, 0, 0);
+    targetCtx.restore();
   } else {
-    ctx.drawImage(labelCanvas, bx, by);
+    targetCtx.drawImage(labelCanvas, bx, by);
   }
 
-  ctx.restore();
+  targetCtx.restore();
 }
+
 function computeBandTimesSorted(tRef, delta, n) {
   const mid = (n - 1) / 2;
   const times = [];
@@ -444,11 +506,41 @@ function computeBandTimesSorted(tRef, delta, n) {
   return times.slice().sort((a, b) => a - b);
 }
 
-// --- Import image (fiable iOS) ---
+function prepareExposureFrame() {
+  const viewport = getViewportSize();
+  lockCanvasViewport(viewport.width, viewport.height);
+  buildProcessedImage(viewport.width, viewport.height);
+
+  exposureState.frame.width = viewport.width;
+  exposureState.frame.height = viewport.height;
+  blackScreen(exposureState.frameCtx, viewport.width, viewport.height);
+
+  if (processed.ready) {
+    exposureState.frameCtx.drawImage(processed.off, processed.x, processed.y, processed.w, processed.h);
+  }
+
+  blackScreen(ctx, canvas.width, canvas.height);
+}
+
+function blitExposureFrame() {
+  if (!exposureState.frame.width || !exposureState.frame.height) return;
+  blackScreen(ctx, canvas.width, canvas.height);
+  ctx.drawImage(exposureState.frame, 0, 0, canvas.width, canvas.height);
+}
+
+function clearExposureFrame() {
+  exposureState.frame.width = 1;
+  exposureState.frame.height = 1;
+  blackScreen(exposureState.frameCtx, 1, 1);
+}
+
 fileInput.addEventListener("change", (e) => {
   try {
     const file = e.target.files && e.target.files[0];
-    if (!file) { setStatus("aucun fichier sélectionné"); return; }
+    if (!file) {
+      setStatus("aucun fichier sélectionné");
+      return;
+    }
 
     setStatus("lecture fichier…");
 
@@ -459,7 +551,7 @@ fileInput.addEventListener("change", (e) => {
       newImg.onload = () => {
         img = newImg;
         hasImage = true;
-        buildProcessedImage();
+        buildProcessedImage(canvas.width, canvas.height);
         drawProcessedFull();
         setStatus("image chargée");
         fileInput.value = "";
@@ -473,11 +565,10 @@ fileInput.addEventListener("change", (e) => {
   }
 });
 
-// --- Exposition ---
 async function runFullExposure(delayMs, expoMs) {
   blackScreen();
   await sleep(delayMs);
-  drawProcessedFull();
+  blitExposureFrame();
   await sleep(expoMs);
   signalEndExposure();
   await sleep(200);
@@ -487,7 +578,6 @@ async function runFullExposure(delayMs, expoMs) {
 
 async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCount, orientation) {
   const times = computeBandTimesSorted(tRefSec, deltaSec, bandCount);
-
   blackScreen();
   await sleep(delayMs);
 
@@ -497,7 +587,7 @@ async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCou
     const t = times[i];
     const label = `${t.toFixed(1)}s`;
 
-    drawProcessedSingleBandWithLabel(i, bandCount, orientation, label);
+    drawProcessedSingleBandWithLabel(i, bandCount, orientation, label, ctx);
     await sleep(Math.round(t * 1000));
 
     blackScreen();
@@ -508,36 +598,55 @@ async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCou
   await sleep(200);
   blackScreen();
   await sleep(delayMs);
-
   return times;
 }
 
-exposeBtn.addEventListener("click", async () => {
-  if (isExposing) return;
-  if (!hasImage) { setStatus("importe une image d'abord"); return; }
-
-  buildProcessedImage();
-
-  const delaySeconds = parseFloat(delayInput.value);
-  if (!Number.isFinite(delaySeconds) || delaySeconds < 0) { setStatus("délai invalide"); return; }
-  const delayMs = Math.round(delaySeconds * 1000);
-
+async function beginExposureSession() {
+  prepareExposureFrame();
   isExposing = true;
   enterExposureMode();
   await acquireWakeLock();
 
   const ac = getAudioCtx();
   if (ac && ac.state === "suspended") {
-  await ac.resume();
+    await ac.resume();
+  }
 }
+
+async function endExposureSession() {
+  await releaseWakeLock();
+  isExposing = false;
+  exitExposureMode();
+  clearExposureFrame();
+  unlockCanvasViewport();
+  resizeCanvas(true);
+}
+
+exposeBtn.addEventListener("click", async () => {
+  if (isExposing) return;
+  if (!hasImage) {
+    setStatus("importe une image d'abord");
+    return;
+  }
+
+  const delaySeconds = parseFloat(delayInput.value);
+  if (!Number.isFinite(delaySeconds) || delaySeconds < 0) {
+    setStatus("délai invalide");
+    return;
+  }
+  const delayMs = Math.round(delaySeconds * 1000);
+
   try {
+    await beginExposureSession();
+
     if (modeSelect.value === "full") {
       const expoSeconds = parseFloat(expoInput.value);
-      if (!Number.isFinite(expoSeconds) || expoSeconds <= 0) { exitExposureMode(); setStatus("temps expo invalide"); return; }
+      if (!Number.isFinite(expoSeconds) || expoSeconds <= 0) {
+        setStatus("temps expo invalide");
+        return;
+      }
 
       await runFullExposure(delayMs, Math.round(expoSeconds * 1000));
-
-      exitExposureMode();
       setStatus("fin expo");
     } else {
       const tRef = parseFloat(refTimeInput.value);
@@ -545,23 +654,28 @@ exposeBtn.addEventListener("click", async () => {
       const bandCount = parseInt(bandCountInput.value, 10);
       const orientation = stripOrientationSelect.value;
 
-      if (!Number.isFinite(tRef) || tRef <= 0) { exitExposureMode(); setStatus("Tref invalide"); return; }
-      if (!Number.isFinite(delta) || delta <= 0) { exitExposureMode(); setStatus("Δ invalide"); return; }
-      if (!Number.isFinite(bandCount) || bandCount < 2 || bandCount > 20) { exitExposureMode(); setStatus("Nb bandes invalide"); return; }
+      if (!Number.isFinite(tRef) || tRef <= 0) {
+        setStatus("Tref invalide");
+        return;
+      }
+      if (!Number.isFinite(delta) || delta <= 0) {
+        setStatus("Δ invalide");
+        return;
+      }
+      if (!Number.isFinite(bandCount) || bandCount < 2 || bandCount > 20) {
+        setStatus("Nb bandes invalide");
+        return;
+      }
 
       const times = await runIndependentBandsWithLabels(delayMs, tRef, delta, bandCount, orientation);
-
-      exitExposureMode();
-      const list = times.map(t => t.toFixed(1)).join(" / ");
+      const list = times.map((t) => t.toFixed(1)).join(" / ");
       setStatus(`fin bandes test — temps: ${list} (s)`);
     }
-  }finally {
-  await releaseWakeLock();
-  isExposing = false;
-}
+  } finally {
+    await endExposureSession();
+  }
 });
 
-// --- Export PNG haute résolution ---
 exportBtn.addEventListener("click", () => {
   if (!hasImage || !img.complete || !img.naturalWidth) {
     setStatus("rien à exporter");
@@ -571,7 +685,7 @@ exportBtn.addEventListener("click", () => {
   try {
     const srcW = img.naturalWidth;
     const srcH = img.naturalHeight;
-    const rot90 = (rotation === 90 || rotation === 270);
+    const rot90 = rotation === 90 || rotation === 270;
 
     const outW = rot90 ? srcH : srcW;
     const outH = rot90 ? srcW : srcH;
@@ -583,11 +697,21 @@ exportBtn.addEventListener("click", () => {
     const octx = out.getContext("2d", { willReadFrequently: true });
 
     octx.save();
-    if (rotation === 90) { octx.translate(outW, 0); octx.rotate(Math.PI / 2); }
-    else if (rotation === 180) { octx.translate(outW, outH); octx.rotate(Math.PI); }
-    else if (rotation === 270) { octx.translate(0, outH); octx.rotate(-Math.PI / 2); }
+    if (rotation === 90) {
+      octx.translate(outW, 0);
+      octx.rotate(Math.PI / 2);
+    } else if (rotation === 180) {
+      octx.translate(outW, outH);
+      octx.rotate(Math.PI);
+    } else if (rotation === 270) {
+      octx.translate(0, outH);
+      octx.rotate(-Math.PI / 2);
+    }
 
-    if (mirrored) { octx.translate(srcW, 0); octx.scale(-1, 1); }
+    if (mirrored) {
+      octx.translate(srcW, 0);
+      octx.scale(-1, 1);
+    }
 
     octx.drawImage(img, 0, 0, srcW, srcH);
     octx.restore();
@@ -596,7 +720,9 @@ exportBtn.addEventListener("click", () => {
     const data = imageData.data;
 
     for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
       let gray = 0.299 * r + 0.587 * g + 0.114 * b;
       gray = clamp255(Math.round(gray));
       gray = 255 - gray;
@@ -606,7 +732,10 @@ exportBtn.addEventListener("click", () => {
     octx.putImageData(imageData, 0, 0);
 
     out.toBlob((blob) => {
-      if (!blob) { setStatus("export: échec"); return; }
+      if (!blob) {
+        setStatus("export: échec");
+        return;
+      }
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "negatif_haute_resolution.png";
@@ -618,18 +747,17 @@ exportBtn.addEventListener("click", () => {
   }
 });
 
-// --- UI extras ---
 toggleControlsBtn.addEventListener("click", () => {
   controls.classList.toggle("hidden");
   toggleControlsBtn.textContent = controls.classList.contains("hidden") ? "Afficher" : "Masquer";
 });
+
 canvas.addEventListener("click", () => {
   if (isExposing) return;
   controls.classList.toggle("hidden");
   toggleControlsBtn.textContent = controls.classList.contains("hidden") ? "Afficher" : "Masquer";
 });
 
-// Fullscreen (Android/desktop; iPhone Safari peut ignorer)
 if (fullscreenBtn) {
   fullscreenBtn.addEventListener("click", async () => {
     try {
@@ -648,4 +776,3 @@ if (fullscreenBtn) {
 }
 
 setStatus("prêt (charge une image)");
-
