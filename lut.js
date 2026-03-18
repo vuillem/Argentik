@@ -64,10 +64,7 @@ function buildPointsLUT(points) {
 
 // Presets pensés pour le NOUVEAU pipeline :
 // positif -> inversion -> LUT -> affichage écran
-//
-// La courbe "paperCurve01" reprend l’allure de la courbe que tu as montrée,
-// avec une approximation manuelle de ses points.
-// Information issue de connaissances internes.
+
 export const CURVE_PRESETS = {
   neutral: {
     label: "Neutre",
