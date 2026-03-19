@@ -337,32 +337,6 @@ async function signalEndExposure() {
   scheduleAlertBeep(ac, t + 0.52, { freq: 2800, freqEnd: 3400, duration: 0.22, gainValue: 0.82, type: "square" });
 }
 
-  const ac = getAudioCtx();
-  if (!ac) return;
-
-  function beep(time, freq = 880, duration = 0.18, gainValue = 0.25) {
-    const osc = ac.createOscillator();
-    const gain = ac.createGain();
-
-    osc.type = "sine";
-    osc.frequency.value = freq;
-
-    gain.gain.setValueAtTime(0.0001, time);
-    gain.gain.exponentialRampToValueAtTime(gainValue, time + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
-
-    osc.connect(gain);
-    gain.connect(ac.destination);
-
-    osc.start(time);
-    osc.stop(time + duration);
-  }
-
-  const t = ac.currentTime + 0.02;
-  beep(t, 880, 0.20, 0.25);
-  beep(t + 0.30, 1320, 0.22, 0.25);
-}
-
 ensureCurvePresetOptions(curvePresetSelect);
 let curveLUT = buildCurveLUT(curvePresetSelect.value);
 
@@ -703,7 +677,7 @@ async function runFullExposure(delayMs, expoMs) {
   blitExposureFrame();
   await sleep(expoMs);
   await signalEndExposure();
-  await sleep(350);
+  await sleep(850);
   blackScreen();
   await sleep(delayMs);
 }
@@ -728,13 +702,6 @@ async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCou
 
   await signalEndExposure();
   await sleep(350);
-  blackScreen();
-  await sleep(delayMs);
-  return times;
-}
-
-  signalEndExposure();
-  await sleep(200);
   blackScreen();
   await sleep(delayMs);
   return times;
