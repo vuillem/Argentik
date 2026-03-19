@@ -534,6 +534,52 @@ function clearExposureFrame() {
   blackScreen(exposureState.frameCtx, 1, 1);
 }
 
+function lockExposureEnvironment() {
+  document.documentElement.classList.add("exposure-lock");
+  document.body.classList.add("exposure-lock");
+
+  if (document.activeElement && typeof document.activeElement.blur === "function") {
+    document.activeElement.blur();
+  }
+
+  document.documentElement.style.overflow = "hidden";
+  document.body.style.overflow = "hidden";
+
+  document.documentElement.style.touchAction = "none";
+  document.body.style.touchAction = "none";
+}
+
+function unlockExposureEnvironment() {
+  document.documentElement.classList.remove("exposure-lock");
+  document.body.classList.remove("exposure-lock");
+
+  document.documentElement.style.overflow = "";
+  document.body.style.overflow = "";
+
+  document.documentElement.style.touchAction = "";
+  document.body.style.touchAction = "";
+}
+
+function setControlsDisabled(disabled) {
+  const fields = document.querySelectorAll("input, select, textarea, button");
+  fields.forEach((el) => {
+    if (el.id === "toggleControlsBtn") return;
+    el.disabled = disabled;
+  });
+}
+
+function preventDuringExposure(e) {
+  if (!isExposing) return;
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+document.addEventListener("touchstart", preventDuringExposure, { passive: false });
+document.addEventListener("touchmove", preventDuringExposure, { passive: false });
+document.addEventListener("touchend", preventDuringExposure, { passive: false });
+document.addEventListener("gesturestart", preventDuringExposure, { passive: false });
+document.addEventListener("gesturechange", preventDuringExposure, { passive: false });
+document.addEventListener("gestureend", preventDuringExposure, { passive: false });
 fileInput.addEventListener("change", (e) => {
   try {
     const file = e.target.files && e.target.files[0];
