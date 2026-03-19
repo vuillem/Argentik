@@ -564,14 +564,18 @@ let textW = 0;
 let boxW = 0;
 const maxW = Math.max(24, band.w - pad * 2);
 
-do {
+while (fontPx > 12) {
   labelOpts.fontSize = fontPx;
   textW = measureBandLabelWidth(lctx, text, labelOpts);
   boxW = Math.ceil(textW + pad * 2);
 
   if (boxW <= maxW) break;
   fontPx -= 1;
-} while (fontPx > 12);
+}
+
+labelOpts.fontSize = fontPx;
+textW = measureBandLabelWidth(lctx, text, labelOpts);
+boxW = Math.ceil(textW + pad * 2);
 
 const boxH = Math.ceil(fontPx + pad * 1.2);
 
