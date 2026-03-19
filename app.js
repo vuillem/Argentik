@@ -3,13 +3,6 @@ function $(id) { return document.getElementById(id); }
 // --- UI / DOM ---
 const canvas = $("canvas");
 const ctx = canvas.getContext("2d", { alpha: false });
-
-const controls = $("controls");
-const toggleControlsBtn = $("toggleControlsBtn");
-const fullscreenBtn = $("fullscreenBtn");
-
-const fileInput = $("fileInput");
-const exposeBtn = $("exposeBtn");
 const exportBtn = $("exportBtn");
 
 const modeSelect = $("modeSelect");
@@ -201,7 +194,7 @@ function unlockCanvasViewport() {
 }
 
 function resizeCanvas(force = false) {
-  if (exposureState.locked && !force) {
+  if ((exposureState.locked || isExposing) && !force) {
     return;
   }
 
@@ -225,7 +218,7 @@ function scheduleResize(force = false) {
 }
 
 function maybeHandleResize() {
-  if (exposureState.locked) {
+  if (exposureState.locked || isExposing) {
     return;
   }
 
@@ -648,33 +641,21 @@ async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCou
 }
 
 async function beginExposureSession() {
-  // 1. Verrouille l'environnement iPhone / navigateur
   lockExposureEnvironment();
-
-  // 2. Désactive les contrôles pendant l'expo
   setControlsDisabled(true);
 
-  // 3. Supprime le focus éventuel d'un champ de saisie
   if (document.activeElement && typeof document.activeElement.blur === "function") {
     document.activeElement.blur();
   }
 
-  // 4. Laisse iOS stabiliser le viewport après blur
   await new Promise(r => setTimeout(r, 150));
 
-  // 5. Prépare l'image figée d'exposition
   prepareExposureFrame();
 
-  // 6. Marque l'application comme étant en exposition
   isExposing = true;
-
-  // 7. Cache l'interface normale
   enterExposureMode();
-
-  // 8. Empêche l'écran de se mettre en veille
   await acquireWakeLock();
 
-  // 9. Réveille l'audio si nécessaire
   const ac = getAudioCtx();
   if (ac && ac.state === "suspended") {
     await ac.resume();
@@ -682,28 +663,13 @@ async function beginExposureSession() {
 }
 
 async function endExposureSession() {
-  // 1. Libère le wake lock
   await releaseWakeLock();
-
-  // 2. Signale la fin de l'exposition
   isExposing = false;
-
-  // 3. Restaure l'interface normale
   exitExposureMode();
-
-  // 4. Vide le frame figé
   clearExposureFrame();
-
-  // 5. Déverrouille le viewport canvas
   unlockCanvasViewport();
-
-  // 6. Déverrouille l'environnement tactile / scroll
   unlockExposureEnvironment();
-
-  // 7. Réactive les contrôles
   setControlsDisabled(false);
-
-  // 8. Redessine l'interface normale aux bonnes dimensions
   resizeCanvas(true);
 }
 
