@@ -201,6 +201,54 @@ function scheduleAlertBeep(ac, when, {
   osc.stop(when + duration + 0.02);
 }
 
+const BAND_LABEL_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
+
+function measureBandLabelWidth(ctx, text, {
+  fontSize = 26,
+  squeeze = 0.84,
+  weight = 600,
+  letterSpacing = 0.2
+} = {}) {
+  ctx.save();
+  ctx.font = `${weight} ${fontSize}px ${BAND_LABEL_FONT_FAMILY}`;
+
+  let width = 0;
+  for (let i = 0; i < text.length; i++) {
+    width += ctx.measureText(text[i]).width * squeeze;
+    if (i < text.length - 1) width += letterSpacing;
+  }
+
+  ctx.restore();
+  return width;
+}
+
+function drawBandLabel(ctx, text, x, y, {
+  fontSize = 26,
+  squeeze = 0.84,
+  weight = 600,
+  color = "rgb(170,170,170)",
+  letterSpacing = 0.2
+} = {}) {
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+  ctx.scale(squeeze, 1);
+
+  ctx.font = `${weight} ${fontSize}px ${BAND_LABEL_FONT_FAMILY}`;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  ctx.fillStyle = color;
+
+  let dx = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    ctx.fillText(ch, dx, 0);
+    dx += ctx.measureText(ch).width;
+    if (i < text.length - 1) dx += letterSpacing / squeeze;
+  }
+
+  ctx.restore();
+}
+
 async function acquireWakeLock() {
   try {
     if (!("wakeLock" in navigator)) return;
@@ -496,65 +544,66 @@ function drawProcessedSingleBandWithLabel(bandIndex, totalBands, orientation, la
     }
   }
 
-  const pad = Math.max(6, Math.floor(Math.min(band.w, band.h) * 0.08));
-  let text = String(labelText).replace(/\.0s$/, "s");
-  let fontPx = Math.max(18, Math.min(56, Math.floor(Math.min(band.w, band.h) * 0.22)));
+  const pad = Math.max(8, Math.floor(Math.min(band.w, band.h) * 0.09));
+const text = String(labelText).replace(/\.0s$/, "s");
 
-  targetCtx.save();
-  targetCtx.textBaseline = "top";
-  targetCtx.textAlign = "left";
-  targetCtx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
+let fontPx = Math.max(20, Math.min(64, Math.floor(Math.min(band.w, band.h) * 0.24)));
 
-  let metrics = targetCtx.measureText(text);
-  let boxW = Math.ceil(metrics.width + pad * 2);
-  const maxW = Math.max(20, band.w - pad * 2);
+const labelOpts = {
+  fontSize: fontPx,
+  squeeze: 0.82,
+  weight: 600,
+  color: "rgb(170,170,170)",
+  letterSpacing: 0.2
+};
 
-  if (boxW > maxW) {
-    const scale = maxW / boxW;
-    fontPx = Math.max(10, Math.floor(fontPx * scale));
-    targetCtx.font = `700 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
-    metrics = targetCtx.measureText(text);
-    boxW = Math.ceil(metrics.width + pad * 2);
-  }
+const labelCanvas = document.createElement("canvas");
+const lctx = labelCanvas.getContext("2d");
 
-  const boxH = Math.ceil(fontPx + pad * 1.4);
-  let bx = band.x + pad;
-  let by = band.y + pad;
+let textW = 0;
+let boxW = 0;
+const maxW = Math.max(24, band.w - pad * 2);
 
-  if (bx + boxW > band.x + band.w - 2) {
-    bx = Math.max(band.x + 2, band.x + band.w - boxW - 2);
-  }
-  if (by + boxH > band.y + band.h - 2) {
-    by = Math.max(band.y + 2, band.y + band.h - boxH - 2);
-  }
+do {
+  labelOpts.fontSize = fontPx;
+  textW = measureBandLabelWidth(lctx, text, labelOpts);
+  boxW = Math.ceil(textW + pad * 2);
 
-  targetCtx.fillStyle = "black";
-  targetCtx.fillRect(bx, by, boxW, boxH);
+  if (boxW <= maxW) break;
+  fontPx -= 1;
+} while (fontPx > 12);
 
-  const labelCanvas = document.createElement("canvas");
-  labelCanvas.width = boxW;
-  labelCanvas.height = boxH;
-  const lctx = labelCanvas.getContext("2d");
+const boxH = Math.ceil(fontPx + pad * 1.2);
 
-  lctx.clearRect(0, 0, boxW, boxH);
-  lctx.fillStyle = "rgb(180,180,180)";
-  lctx.textBaseline = "top";
-  lctx.textAlign = "left";
-  lctx.font = `600 ${fontPx}px -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif`;
-  lctx.fillText(text, pad, Math.floor(pad * 0.5));
+let bx = band.x + pad;
+let by = band.y + pad;
 
-  if (mirrored) {
-    targetCtx.save();
-    targetCtx.translate(bx + boxW, by);
-    targetCtx.scale(-1, 1);
-    targetCtx.drawImage(labelCanvas, 0, 0);
-    targetCtx.restore();
-  } else {
-    targetCtx.drawImage(labelCanvas, bx, by);
-  }
-
-  targetCtx.restore();
+if (bx + boxW > band.x + band.w - 2) {
+  bx = Math.max(band.x + 2, band.x + band.w - boxW - 2);
 }
+if (by + boxH > band.y + band.h - 2) {
+  by = Math.max(band.y + 2, band.y + band.h - boxH - 2);
+}
+
+targetCtx.fillStyle = "black";
+targetCtx.fillRect(bx, by, boxW, boxH);
+
+labelCanvas.width = boxW;
+labelCanvas.height = boxH;
+lctx.clearRect(0, 0, boxW, boxH);
+
+drawBandLabel(lctx, text, pad, Math.round(boxH / 2), labelOpts);
+
+if (mirrored) {
+  targetCtx.save();
+  targetCtx.translate(bx + boxW, by);
+  targetCtx.scale(-1, 1);
+  targetCtx.drawImage(labelCanvas, 0, 0);
+  targetCtx.restore();
+} else {
+  targetCtx.drawImage(labelCanvas, bx, by);
+}
+} 
 
 function computeBandTimesSorted(tRef, delta, n) {
   const mid = (n - 1) / 2;
