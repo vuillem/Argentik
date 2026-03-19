@@ -650,6 +650,7 @@ async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCou
 async function beginExposureSession() {
   lockExposureEnvironment();
   setControlsDisabled(true);
+  isExposing = true ;
 
   if (document.activeElement && typeof document.activeElement.blur === "function") {
     document.activeElement.blur();
@@ -658,8 +659,6 @@ async function beginExposureSession() {
   await new Promise(r => setTimeout(r, 150));
 
   prepareExposureFrame();
-
-  isExposing = true;
   enterExposureMode();
   await acquireWakeLock();
 
