@@ -86,38 +86,38 @@ export const CURVE_PRESETS = {
     [255, 182],
       ]
 },
+  
+paperCurveSoft: {
+  label: "Courbe papier douce",
+  type: "points",
+  points: [
+    [0, 36],
+    [32, 62],
+    [64, 88],
+    [96, 112],
+    [128, 128],
+    [160, 144],
+    [192, 168],
+    [224, 194],
+    [255, 218]
+  ]
+},
 
-  paperCurveSoft: {
-    label: "Courbe papier douce",
-    type: "points",
-    points: [
-      [0, 18],
-      [32, 42],
-      [64, 70],
-      [96, 99],
-      [128, 128],
-      [160, 157],
-      [192, 186],
-      [224, 214],
-      [255, 237]
-    ]
-  },
-
-  paperCurveContrast: {
-    label: "Courbe papier contrastée",
-    type: "points",
-    points: [
-      [0, 6],
-      [32, 34],
-      [64, 66],
-      [96, 97],
-      [128, 128],
-      [160, 159],
-      [192, 191],
-      [224, 222],
-      [255, 249]
-    ]
-  },
+paperCurveContrast: {
+  label: "Courbe papier contrastée",
+  type: "points",
+  points: [
+    [0, 56],
+    [32, 78],
+    [64, 100],
+    [96, 118],
+    [128, 128],
+    [160, 136],
+    [192, 146],
+    [224, 158],
+    [255, 172]
+  ]
+},
 
   soft: {
     label: "Doux paramétrique",
