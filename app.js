@@ -660,7 +660,6 @@ async function beginExposureSession() {
   if (ac && ac.state === "suspended") {
     await ac.resume();
   }
-}
 
 async function endExposureSession() {
   await releaseWakeLock();
