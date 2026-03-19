@@ -84,7 +84,7 @@ export const CURVE_PRESETS = {
     [192, 150],
     [224, 165],
     [255, 182],
-      ]
+  ]
 },
   
 paperCurveSoft: {
