@@ -10,6 +10,13 @@ const modeSelect = $("modeSelect");
 const expoInput = $("expoTime");
 const delayInput = $("delayTime");
 
+const controls = $("controls");
+const toggleControlsBtn = $("toggleControlsBtn");
+const fullscreenBtn = $("fullscreenBtn");
+
+const fileInput = $("fileInput");
+const exposeBtn = $("exposeBtn");
+
 // Bandes test : Tref + Δ + n + orientation
 const refTimeInput = $("refTime");
 const stepInput = $("stepTime");
@@ -230,7 +237,7 @@ function maybeHandleResize() {
 
 window.addEventListener("resize", maybeHandleResize, { passive: true });
 window.addEventListener("orientationchange", () => {
-  if (exposureState.locked) return;
+  if (exposureState.locked|| isExposing) return;
   clearTimer(resizeResumeTimer);
   resizeResumeTimer = window.setTimeout(() => scheduleResize(false), 250);
 }, { passive: true });
@@ -660,6 +667,7 @@ async function beginExposureSession() {
   if (ac && ac.state === "suspended") {
     await ac.resume();
   }
+}
 
 async function endExposureSession() {
   await releaseWakeLock();
