@@ -143,7 +143,15 @@ function clearTimer(id) { if (id) window.clearTimeout(id); }
 function getAudioCtx() {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) return null;
-  if (!audioCtx) audioCtx = new AudioCtx();
+
+  if (!audioCtx) {
+    audioCtx = new AudioCtx();
+
+    audioCtx.onstatechange = () => {
+      console.log("[audio] state =", audioCtx.state);
+    };
+  }
+
   return audioCtx;
 }
 
@@ -172,24 +180,48 @@ function ensureAudioGraph() {
 
 async function ensureAudioReady() {
   const ac = ensureAudioGraph();
-  if (!ac) return null;
+  if (!ac) {
+    console.warn("[audio] AudioContext indisponible");
+    return null;
+  }
 
   if (ac.state === "suspended" || ac.state === "interrupted") {
-    await ac.resume();
+    try {
+      await ac.resume();
+      console.log("[audio] resume() demandé, état =", ac.state);
+    } catch (err) {
+      console.warn("[audio] resume() a échoué :", err);
+      return null;
+    }
+  }
+
+  if (ac.state !== "running") {
+    console.warn("[audio] contexte non prêt :", ac.state);
+    return null;
   }
 
   // Amorçage très bref pour stabiliser la chaîne audio iOS/Safari
   if (!audioPrimed) {
-    const osc = ac.createOscillator();
-    const gain = ac.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(440, ac.currentTime);
-    gain.gain.setValueAtTime(0.0001, ac.currentTime);
-    osc.connect(gain);
-    gain.connect(audioCompressor);
-    osc.start(ac.currentTime);
-    osc.stop(ac.currentTime + 0.02);
-    audioPrimed = true;
+    try {
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(440, ac.currentTime);
+      gain.gain.setValueAtTime(0.0001, ac.currentTime);
+
+      osc.connect(gain);
+      gain.connect(audioCompressor);
+
+      osc.start(ac.currentTime);
+      osc.stop(ac.currentTime + 0.02);
+
+      audioPrimed = true;
+      console.log("[audio] amorçage effectué");
+    } catch (err) {
+      console.warn("[audio] amorçage impossible :", err);
+      return null;
+    }
   }
 
   return ac;
@@ -393,16 +425,68 @@ if (window.visualViewport) {
 resizeCanvas(true);
 
 async function signalEndExposure() {
-  const ac = await ensureAudioReady();
-  if (!ac) return;
+  try {
+    const ac = await ensureAudioReady();
 
-  const t = ac.currentTime + 0.03;
+    if (!ac) {
+      console.warn("[audio] bip final annulé : contexte indisponible");
+      console.log("[audio] diagnostic fin expo =", {
+        hasAudioCtx: !!audioCtx,
+        state: audioCtx ? audioCtx.state : "none",
+        primed: audioPrimed
+      });
+      return false;
+    }
 
-  // Séquence plus saillante, pensée pour être entendue en ambiance
-  scheduleAlertBeep(ac, t + 0.00, { freq: 1800, freqEnd: 2200, duration: 0.10, gainValue: 0.60, type: "square" });
-  scheduleAlertBeep(ac, t + 0.16, { freq: 2400, freqEnd: 3000, duration: 0.10, gainValue: 0.72, type: "square" });
-  scheduleAlertBeep(ac, t + 0.32, { freq: 1800, freqEnd: 2200, duration: 0.10, gainValue: 0.60, type: "square" });
-  scheduleAlertBeep(ac, t + 0.52, { freq: 2800, freqEnd: 3400, duration: 0.22, gainValue: 0.82, type: "square" });
+    if (ac.state !== "running") {
+      console.warn("[audio] bip final annulé : état =", ac.state);
+      console.log("[audio] diagnostic fin expo =", {
+        state: ac.state,
+        primed: audioPrimed
+      });
+      return false;
+    }
+
+    const t = ac.currentTime + 0.05;
+
+    scheduleAlertBeep(ac, t + 0.00, {
+      freq: 1800,
+      freqEnd: 2200,
+      duration: 0.10,
+      gainValue: 0.60,
+      type: "square"
+    });
+
+    scheduleAlertBeep(ac, t + 0.16, {
+      freq: 2400,
+      freqEnd: 3000,
+      duration: 0.10,
+      gainValue: 0.72,
+      type: "square"
+    });
+
+    scheduleAlertBeep(ac, t + 0.32, {
+      freq: 1800,
+      freqEnd: 2200,
+      duration: 0.10,
+      gainValue: 0.60,
+      type: "square"
+    });
+
+    scheduleAlertBeep(ac, t + 0.52, {
+      freq: 2800,
+      freqEnd: 3400,
+      duration: 0.22,
+      gainValue: 0.82,
+      type: "square"
+    });
+
+    console.log("[audio] bip final programmé à t =", t);
+    return true;
+  } catch (err) {
+    console.error("[audio] échec signalEndExposure :", err);
+    return false;
+  }
 }
 
 ensureCurvePresetOptions(curvePresetSelect);
@@ -755,20 +839,30 @@ fileInput.addEventListener("change", (e) => {
 async function runFullExposure(delayMs, expoMs) {
   blackScreen();
   await sleep(delayMs);
+
+  console.log("[expo] affichage image, audio state =", audioCtx ? audioCtx.state : "no-audio");
   blitExposureFrame();
+
   await sleep(expoMs);
-  await signalEndExposure();
+
+  const beepOk = await signalEndExposure();
+  console.log("[audio] résultat bip final =", beepOk);
+
   await sleep(850);
   blackScreen();
   await sleep(delayMs);
+
+  return { beepOk };
 }
 
 async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCount, orientation) {
   const times = computeBandTimesSorted(tRefSec, deltaSec, bandCount);
+
   blackScreen();
   await sleep(delayMs);
 
   const blinkMs = 140;
+  console.log("[expo] début bandes, audio state =", audioCtx ? audioCtx.state : "no-audio");
 
   for (let i = 0; i < bandCount; i++) {
     const t = times[i];
@@ -781,31 +875,34 @@ async function runIndependentBandsWithLabels(delayMs, tRefSec, deltaSec, bandCou
     await sleep(blinkMs);
   }
 
-  await signalEndExposure();
-  await sleep(350);
+  const beepOk = await signalEndExposure();
+  console.log("[audio] résultat bip final =", beepOk);
+
+  await sleep(850);
   blackScreen();
   await sleep(delayMs);
-  return times;
-}
 
+  return { times, beepOk };
+}
 async function beginExposureSession() {
   lockExposureEnvironment();
   setControlsDisabled(true);
-  isExposing = true ;
+  isExposing = true;
 
   if (document.activeElement && typeof document.activeElement.blur === "function") {
     document.activeElement.blur();
   }
 
-  await new Promise(r => setTimeout(r, 150));
+  await new Promise((r) => setTimeout(r, 150));
 
   prepareExposureFrame();
   enterExposureMode();
   await acquireWakeLock();
 
-    const ac = await ensureAudioReady();
-  if (ac && (ac.state === "suspended" || ac.state === "interrupted")) {
-    await ac.resume();
+  const ac = await ensureAudioReady();
+  if (!ac) {
+    setStatus("audio non prêt");
+    throw new Error("Audio non prêt pour la session");
   }
 }
 
@@ -844,8 +941,13 @@ exposeBtn.addEventListener("click", async () => {
         return;
       }
 
-      await runFullExposure(delayMs, Math.round(expoSeconds * 1000));
-      setStatus("fin expo");
+      const { beepOk } = await runFullExposure(delayMs, Math.round(expoSeconds * 1000));
+
+      if (beepOk) {
+        setStatus("fin expo");
+      } else {
+        setStatus("fin expo — bip non émis");
+      }
     } else {
       const tRef = parseFloat(refTimeInput.value);
       const delta = parseFloat(stepInput.value);
@@ -865,15 +967,26 @@ exposeBtn.addEventListener("click", async () => {
         return;
       }
 
-      const times = await runIndependentBandsWithLabels(delayMs, tRef, delta, bandCount, orientation);
+      const { times, beepOk } = await runIndependentBandsWithLabels(
+        delayMs,
+        tRef,
+        delta,
+        bandCount,
+        orientation
+      );
+
       const list = times.map((t) => t.toFixed(1)).join(" / ");
-      setStatus(`fin bandes test — temps: ${list} (s)`);
+
+      if (beepOk) {
+        setStatus(`fin bandes test — temps: ${list} (s)`);
+      } else {
+        setStatus(`fin bandes test — bip non émis — temps: ${list} (s)`);
+      }
     }
   } finally {
     await endExposureSession();
   }
 });
-
 exportBtn.addEventListener("click", () => {
   if (!hasImage || !img.complete || !img.naturalWidth) {
     setStatus("rien à exporter");
