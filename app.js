@@ -42,12 +42,12 @@ const topBar = document.getElementById("topBar");
 // corrections locales pour contrer la diffusion des noirs
 const spatialDefaults = {
   diffusionCompensationEnabled: true,
-  diffusionHighlightThreshold: 0.72,
-  diffusionEdgeStrength: 1.0,
-  diffusionAmount: 0.12,
+  diffusionHighlightThreshold: 0.68,
+  diffusionEdgeStrength: 1.15,
+  diffusionAmount: 0.18,
 
   edgeRestoreEnabled: true,
-  edgeRestoreAmount: 0.08,
+  edgeRestoreAmount: 0.12,
   edgeRestoreProtectShadows: 0.08,
   edgeRestoreProtectHighlights: 0.92
 };
