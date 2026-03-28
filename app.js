@@ -1,3 +1,5 @@
+import { processNegativeSpatial } from "./spatial.js";
+
 function $(id) { return document.getElementById(id); }
 
 // --- UI / DOM ---
