@@ -1,4 +1,5 @@
 import { processNegativeSpatial } from "./spatial.js";
+import { buildCurveLUT, ensureCurvePresetOptions } from "./lut.js";
 
 function $(id) { return document.getElementById(id); }
 
@@ -38,7 +39,23 @@ const rotValue = $("rotValue");
 // Topbar (pour tout cacher pendant expo)
 const topBar = document.getElementById("topBar");
 
-import { buildCurveLUT, ensureCurvePresetOptions } from "./lut.js";
+// corrections locales pour contrer la diffusion des noirs
+const spatialDefaults = {
+  diffusionCompensationEnabled: true,
+  diffusionHighlightThreshold: 0.72,
+  diffusionEdgeStrength: 1.0,
+  diffusionAmount: 0.12,
+
+  edgeRestoreEnabled: true,
+  edgeRestoreAmount: 0.08,
+  edgeRestoreProtectShadows: 0.08,
+  edgeRestoreProtectHighlights: 0.92
+};
+
+const state = {
+  useSpatialPipeline: true,
+  ...spatialDefaults
+};
 
 // --- Diagnostics ---
 function setStatus(msg) {
@@ -116,6 +133,7 @@ const exposureState = {
   suppressResizeUntil: 0,
 };
 exposureState.frameCtx = exposureState.frame.getContext("2d", { alpha: false });
+
 
 // --- Utils ---
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
@@ -480,20 +498,28 @@ function buildProcessedImage(targetW = canvas.width, targetH = canvas.height) {
   octx.restore();
 
   const imageData = octx.getImageData(0, 0, w, h);
-  const data = imageData.data;
 
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-    gray = clamp255(Math.round(gray));
-    gray = 255 - gray;
-    gray = curveLUT[gray];
-    data[i] = data[i + 1] = data[i + 2] = gray;
+  let processedImageData;
+
+  if (state.useSpatialPipeline) {
+    processedImageData = processNegativeSpatial(imageData, {
+      paperCurveFn: (x) => curveLUT[Math.max(0, Math.min(255, Math.round(x * 255)))] / 255,
+
+      diffusionCompensationEnabled: state.diffusionCompensationEnabled,
+      diffusionHighlightThreshold: state.diffusionHighlightThreshold,
+      diffusionEdgeStrength: state.diffusionEdgeStrength,
+      diffusionAmount: state.diffusionAmount,
+
+      edgeRestoreEnabled: state.edgeRestoreEnabled,
+      edgeRestoreAmount: state.edgeRestoreAmount,
+      edgeRestoreProtectShadows: state.edgeRestoreProtectShadows,
+      edgeRestoreProtectHighlights: state.edgeRestoreProtectHighlights
+    });
+  } else {
+    processedImageData = imageData;
   }
 
-  octx.putImageData(imageData, 0, 0);
+  octx.putImageData(processedImageData, 0, 0);
   processed.ready = true;
 }
 
@@ -888,20 +914,23 @@ exportBtn.addEventListener("click", () => {
     octx.drawImage(img, 0, 0, srcW, srcH);
     octx.restore();
 
-    const imageData = octx.getImageData(0, 0, outW, outH);
-    const data = imageData.data;
+const imageData = octx.getImageData(0, 0, outW, outH);
 
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-      gray = clamp255(Math.round(gray));
-      gray = 255 - gray;
-      gray = curveLUT[gray];
-      data[i] = data[i + 1] = data[i + 2] = gray;
-    }
-    octx.putImageData(imageData, 0, 0);
+const processedImageData = processNegativeSpatial(imageData, {
+  paperCurveFn: (x) => curveLUT[Math.max(0, Math.min(255, Math.round(x * 255)))] / 255,
+
+  diffusionCompensationEnabled: state.diffusionCompensationEnabled,
+  diffusionHighlightThreshold: state.diffusionHighlightThreshold,
+  diffusionEdgeStrength: state.diffusionEdgeStrength,
+  diffusionAmount: state.diffusionAmount,
+
+  edgeRestoreEnabled: state.edgeRestoreEnabled,
+  edgeRestoreAmount: state.edgeRestoreAmount,
+  edgeRestoreProtectShadows: state.edgeRestoreProtectShadows,
+  edgeRestoreProtectHighlights: state.edgeRestoreProtectHighlights
+});
+
+octx.putImageData(processedImageData, 0, 0);
 
     out.toBlob((blob) => {
       if (!blob) {
